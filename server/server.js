@@ -161,21 +161,144 @@ app.post('/api/send-file', upload.single('file'), async (req, res) => {
     }
 });
 
-// Função para formatar número de telefone
+// Lista de códigos de país comuns e seus tamanhos de número
+const countryCodes = {
+    '1': { name: 'EUA/Canadá', lengths: [10] }, // EUA/Canadá: +1 e 10 dígitos
+    '44': { name: 'Reino Unido', lengths: [10] }, // Reino Unido: +44 e 10 dígitos
+    '351': { name: 'Portugal', lengths: [9] }, // Portugal: +351 e 9 dígitos
+    '55': { name: 'Brasil', lengths: [10, 11] }, // Brasil: +55 e 10-11 dígitos (com/sem DDD)
+    '61': { name: 'Austrália', lengths: [9, 10] }, // Austrália: +61 e 9-10 dígitos
+    '81': { name: 'Japão', lengths: [10, 11] }, // Japão: +81 e 10-11 dígitos
+};
+
+// Função melhorada para formatar número de telefone internacional
 function formatPhoneNumber(number) {
     // Remove todos os caracteres que não são dígitos
     let cleaned = number.replace(/\D/g, '');
     
-    // Adiciona o código do país (Brasil) se não existir
-    if (cleaned.length <= 11) {
-        cleaned = '55' + cleaned;
-    } else if (cleaned.startsWith('55') && cleaned.length > 13) {
-        // Ajusta números com formato incorreto
-        cleaned = '55' + cleaned.substring(2, 13);
+    // Verifica se o número já começa com um código de país conhecido
+    let countryCode = null;
+    for (const code in countryCodes) {
+        if (cleaned.startsWith(code)) {
+            countryCode = code;
+            break;
+        }
+    }
+    
+    // Se não tiver código de país, tenta identificar pelo tamanho ou assume Brasil
+    if (!countryCode) {
+        // Se tiver 8-9 dígitos sem DDD, assume que é brasileiro e adiciona 55 + um DDD padrão (11)
+        if (cleaned.length <= 9) {
+            console.log(`Número curto detectado: ${cleaned}. Adicionando código do Brasil (55) e DDD padrão.`);
+            cleaned = '5511' + cleaned;
+        } 
+        // Se tiver 10-11 dígitos (número brasileiro típico com DDD), adiciona só o 55
+        else if (cleaned.length >= 10 && cleaned.length <= 11) {
+            console.log(`Número sem código de país detectado: ${cleaned}. Adicionando código do Brasil (55).`);
+            cleaned = '55' + cleaned;
+        }
+        // Se for maior, assume que já tem o código mas não foi reconhecido
+        else {
+            console.log(`Número longo não reconhecido: ${cleaned}. Mantendo original.`);
+        }
+    } else {
+        console.log(`Código de país detectado: +${countryCode} (${countryCodes[countryCode].name})`);
     }
     
     return cleaned;
 }
+
+// Rota para analisar um número e retornar informações do país
+app.post('/api/analyze-number', (req, res) => {
+    const { number } = req.body;
+    
+    if (!number) {
+        return res.status(400).json({ error: 'Número é obrigatório' });
+    }
+    
+    try {
+        // Remove todos os caracteres que não são dígitos
+        let cleaned = number.replace(/\D/g, '');
+        let countryInfo = { code: null, country: 'Desconhecido', isFormatted: false };
+        
+        // Verifica se o número já começa com um código de país conhecido
+        for (const code in countryCodes) {
+            if (cleaned.startsWith(code)) {
+                countryInfo.code = code;
+                countryInfo.country = countryCodes[code].name;
+                countryInfo.isFormatted = true;
+                break;
+            }
+        }
+        
+        // Retorna a informação do país
+        res.json({
+            original: number,
+            cleaned: cleaned,
+            countryInfo: countryInfo,
+            formattedNumber: formatPhoneNumber(number)
+        });
+    } catch (error) {
+        console.error('Erro ao analisar número:', error);
+        res.status(500).json({ error: 'Erro ao analisar número', details: error.message });
+    }
+});
+
+// Rota para analisar todos os números de um lote
+app.post('/api/analyze-batch', (req, res) => {
+    const { numbers } = req.body;
+    
+    if (!numbers || !Array.isArray(numbers)) {
+        return res.status(400).json({ error: 'Lista de números é obrigatória' });
+    }
+    
+    try {
+        const results = numbers.map(number => {
+            // Remove todos os caracteres que não são dígitos
+            const cleaned = number.replace(/\D/g, '');
+            let countryInfo = { code: null, country: 'Desconhecido', isFormatted: false };
+            
+            // Verifica se o número já começa com um código de país conhecido
+            for (const code in countryCodes) {
+                if (cleaned.startsWith(code)) {
+                    countryInfo.code = code;
+                    countryInfo.country = countryCodes[code].name;
+                    countryInfo.isFormatted = true;
+                    break;
+                }
+            }
+            
+            return {
+                original: number,
+                cleaned: cleaned,
+                countryInfo: countryInfo,
+                formattedNumber: formatPhoneNumber(number)
+            };
+        });
+        
+        // Estatísticas por país
+        const countryStats = {};
+        results.forEach(result => {
+            const country = result.countryInfo.country;
+            if (!countryStats[country]) {
+                countryStats[country] = 0;
+            }
+            countryStats[country]++;
+        });
+        
+        res.json({
+            results: results,
+            stats: {
+                total: results.length,
+                formatted: results.filter(r => r.countryInfo.isFormatted).length,
+                byCountry: countryStats
+            }
+        });
+    } catch (error) {
+        console.error('Erro ao analisar lote de números:', error);
+        res.status(500).json({ error: 'Erro ao analisar lote de números', details: error.message });
+    }
+});
 
 // Inicia o servidor
 app.listen(port, () => {
