@@ -18,6 +18,7 @@ WhatsApp Messenger é uma ferramenta que permite enviar mensagens em massa para 
 - ✅ Tentativas automáticas em caso de falha
 - ✅ Barra de progresso e estimativa de tempo
 - ✅ Log detalhado das operações
+- ✅ Análise e formatação automática de números de telefone
 
 ## 🔧 Requisitos do Sistema
 
@@ -31,24 +32,23 @@ WhatsApp Messenger é uma ferramenta que permite enviar mensagens em massa para 
 
 ## 🚀 Instalação
 
-### 1. Clone o repositório
-```bash
-git clone 
-cd whatsapp-messenger
-```
+Para instruções detalhadas de instalação, consulte o arquivo `setup-guide.md`.
 
-### 2. Configure o Servidor
+### Resumo rápido:
+
 ```bash
+# 1. Clone o repositório
+git clone <seu-repositorio>
+cd whatsapp-messenger
+
+# 2. Configure o Servidor
 cd server
 npm install
-```
 
-### 3. Configure o Cliente
-```bash
+# 3. Configure o Cliente
 cd ../client
-pip install -r requirements.txt
+pip install -r ../python-requirements.txt
 ```
-> **Nota para usuários Mac**: Use `pip3` em vez de `pip` se necessário
 
 ## 📱 Como Usar
 
@@ -88,11 +88,12 @@ whatsapp-messenger/
 │   └── package.json      # Dependências do Node.js
 │
 ├── client/               # Cliente Python
-│   ├── whatsapp_messenger.py  # Interface gráfica
-│   └── requirements.txt       # Dependências Python
+│   └── whatsapp_messenger.py  # Interface gráfica
 │
+├── python-requirements.txt    # Dependências Python
 ├── .gitignore            # Arquivos ignorados pelo Git
-└── README.md             # Este arquivo
+├── README.md             # Este arquivo
+└── setup-guide.md        # Guia detalhado de instalação
 ```
 
 ## 📋 Formato dos Arquivos de Contatos
@@ -108,6 +109,8 @@ Exemplo:
 5511888887777
 5521777776666
 ```
+
+O sistema inclui formatação automática de números e pode adicionar o código do país (55 para Brasil) quando não fornecido.
 
 ## ⚠️ Uso Responsável
 
@@ -127,7 +130,7 @@ Este aplicativo deve ser usado de forma responsável e ética:
 
 ### A interface gráfica não abre
 - Verifique se o Python está instalado: `python --version` ou `python3 --version`
-- Certifique-se de que as bibliotecas foram instaladas: `pip install -r requirements.txt`
+- Certifique-se de que as bibliotecas foram instaladas: `pip install -r python-requirements.txt`
 - No Windows, se houver erro com tkinter: `pip install tk`
 
 ### Não consegue autenticar
