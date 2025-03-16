@@ -14,6 +14,9 @@ sessions/
 # Logs
 log.txt
 *.log
+server_log.txt
+server_error_log.txt
+directory_structure.txt
 
 # Arquivos de ambiente
 .env
@@ -55,3 +58,15 @@ Desktop.ini
 temp/
 tmp/
 .tmp/
+
+# Arquivos de construção e distribuição
+build/
+build_tmp/
+dist/
+*.spec
+warn-*.txt
+xref-*.html
+
+# Arquivos do PyInstaller
+*.manifest
+*.spec

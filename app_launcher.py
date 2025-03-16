@@ -22,6 +22,26 @@ def get_base_dir():
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
 
+def list_directory_structure(dir_path, output_file, level=0):
+    """Lista a estrutura de diretórios para diagnóstico"""
+    if not os.path.exists(dir_path):
+        output_file.write(f"{'  ' * level}[NÃO EXISTE] {dir_path}\n")
+        return
+        
+    if os.path.isfile(dir_path):
+        output_file.write(f"{'  ' * level}[ARQUIVO] {os.path.basename(dir_path)}\n")
+        return
+        
+    output_file.write(f"{'  ' * level}[PASTA] {os.path.basename(dir_path)}\n")
+    
+    try:
+        entries = os.listdir(dir_path)
+        for entry in sorted(entries):
+            full_path = os.path.join(dir_path, entry)
+            list_directory_structure(full_path, output_file, level + 1)
+    except Exception as e:
+        output_file.write(f"{'  ' * (level+1)}[ERRO AO LISTAR] {e}\n")
+
 class ServerProcess:
     def __init__(self):
         self.process = None
@@ -44,34 +64,53 @@ class ServerProcess:
         log_path = os.path.join(base_dir, "server_log.txt")
         self.log_file = open(log_path, "w")
         
+        self.log_file.write(f"Base dir: {base_dir}\n")
+        self.log_file.write(f"Server dir: {server_dir}\n")
+        self.log_file.flush()
+        
         # Comando para iniciar o servidor Node.js
         if platform.system() == "Windows":
             # No Windows, executamos "node server.js"
             node_path = os.path.join(base_dir, "bin", "node", "node.exe")
             server_js = os.path.join(server_dir, "server.js")
+            
+            self.log_file.write(f"Node path: {node_path}\n")
+            self.log_file.write(f"Server.js path: {server_js}\n")
+            self.log_file.write(f"Node exists: {os.path.exists(node_path)}\n")
+            self.log_file.write(f"Server.js exists: {os.path.exists(server_js)}\n")
+            self.log_file.flush()
+            
             cmd = [node_path, server_js]
         else:
             # Em outros sistemas, podemos tentar usar o node do sistema
             server_js = os.path.join(server_dir, "server.js")
             cmd = ["node", server_js]
         
+        # Definir o diretório de trabalho correto
+        working_dir = server_dir
+        
         # Inicia o processo do servidor
         try:
+            self.log_file.write(f"Tentando iniciar o servidor com comando: {cmd}\n")
+            self.log_file.write(f"Diretório de trabalho: {working_dir}\n")
+            self.log_file.flush()
+            
             self.process = subprocess.Popen(
                 cmd,
-                cwd=server_dir,
+                cwd=working_dir,
                 stdout=self.log_file,
                 stderr=self.log_file,
                 env=env
             )
             self.is_running = True
+            self.log_file.write(f"Servidor iniciado (PID: {self.process.pid})\n")
+            self.log_file.flush()
             print(f"Servidor iniciado (PID: {self.process.pid})")
             return True
         except Exception as e:
+            self.log_file.write(f"Erro ao iniciar o servidor: {e}\n")
+            self.log_file.flush()
             print(f"Erro ao iniciar o servidor: {e}")
-            if self.log_file:
-                self.log_file.write(f"Erro ao iniciar o servidor: {e}\n")
-                self.log_file.flush()
             return False
 
     def stop(self):
@@ -232,6 +271,20 @@ class LauncherApp:
 
     def _start_server(self):
         if not self.server.start():
+            # Adicione estes logs para depuração
+            log_path = os.path.join(get_base_dir(), "server_error_log.txt")
+            with open(log_path, "w") as f:
+                f.write(f"Erro ao iniciar o servidor\n")
+                f.write(f"Base dir: {get_base_dir()}\n")
+                f.write(f"Server dir: {os.path.join(get_base_dir(), 'server')}\n")
+                # Verifique se os arquivos do servidor existem
+                server_js = os.path.join(get_base_dir(), "server", "server.js")
+                f.write(f"server.js existe: {os.path.exists(server_js)}\n")
+                # Verifique caminho Node.js
+                if platform.system() == "Windows":
+                    node_path = os.path.join(get_base_dir(), "bin", "node", "node.exe")
+                    f.write(f"node.exe existe: {os.path.exists(node_path)}\n")
+            
             self.root.after(0, lambda: self.update_status("Falha ao iniciar o servidor", "red"))
             self.root.after(0, lambda: messagebox.showerror("Erro", "Falha ao iniciar o servidor."))
             self.root.after(0, lambda: self.start_button.config(state=tk.NORMAL))
@@ -350,6 +403,13 @@ class LauncherApp:
 
 # Função principal
 def main():
+    # Diagnóstico da estrutura de diretórios
+    base_dir = get_base_dir()
+    with open(os.path.join(base_dir, "directory_structure.txt"), "w", encoding="utf-8") as f:
+        f.write(f"Base directory: {base_dir}\n\n")
+        f.write("Estrutura de diretórios:\n")
+        list_directory_structure(base_dir, f)
+    
     root = tk.Tk()
     app = LauncherApp(root)
     root.mainloop()

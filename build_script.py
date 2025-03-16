@@ -156,19 +156,24 @@ def build_executable(build_dir, dist_dir):
         sys.executable, "-m", "PyInstaller",
         "--name", PROJECT_NAME,
         "--onedir",  # Cria um diretório com o executável e dependências
-        "--windowed",  # Não mostra a janela de console
-        "--icon", os.path.join(build_dir, "icon.ico") if os.path.exists(os.path.join(build_dir, "icon.ico")) else None,
-        app_launcher
+        "--windowed"  # Não mostra a janela de console
     ]
+    
+    # Adiciona o ícone se existir
+    icon_path = os.path.join(build_dir, "icon.ico")
+    if os.path.exists(icon_path):
+        pyinstaller_cmd.extend(["--icon", icon_path])
     
     # Adiciona os dados adicionais
     for src, dst in additional_data:
         src_path = os.path.join(build_dir, src)
         if os.path.exists(src_path):
-            pyinstaller_cmd.extend(["--add-data", f"{src_path}{os.pathsep}{dst}"])
+            # No Windows usa ponto e vírgula como separador
+            sep = ";" if platform.system() == "Windows" else ":"
+            pyinstaller_cmd.extend(["--add-data", f"{src_path}{sep}{dst}"])
     
-    # Remove opções None (caso não exista ícone)
-    pyinstaller_cmd = [x for x in pyinstaller_cmd if x is not None]
+    # Adiciona o script principal no final
+    pyinstaller_cmd.append(app_launcher)
     
     # Executa o PyInstaller
     run_command(pyinstaller_cmd, cwd=build_dir)
