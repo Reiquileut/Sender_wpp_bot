@@ -299,7 +299,66 @@ app.post('/api/analyze-batch', (req, res) => {
         res.status(500).json({ error: 'Erro ao analisar lote de números', details: error.message });
     }
 });
-
+// Rota para reiniciar a sessão do WhatsApp
+app.post('/api/reset-session', async (req, res) => {
+    try {
+        console.log('Solicitação para reiniciar sessão do WhatsApp recebida');
+        
+        // Informa que vamos encerrar a sessão atual
+        clientReady = false;
+        
+        // Tenta desconectar o cliente atual
+        try {
+            await client.destroy();
+            console.log('Cliente destruído com sucesso');
+        } catch (destroyError) {
+            console.log('Erro ao destruir cliente:', destroyError);
+            // Continuamos mesmo com erro, pois vamos recriar o cliente de qualquer forma
+        }
+        
+        // Remove os arquivos de autenticação
+        try {
+            const authFolder = './whatsapp-session';
+            if (fs.existsSync(authFolder)) {
+                // Função para excluir pasta recursivamente
+                const deleteFolderRecursive = function(path) {
+                    if (fs.existsSync(path)) {
+                        fs.readdirSync(path).forEach((file) => {
+                            const curPath = path + "/" + file;
+                            if (fs.lstatSync(curPath).isDirectory()) {
+                                // Recursão para pastas
+                                deleteFolderRecursive(curPath);
+                            } else {
+                                // Exclui arquivo
+                                fs.unlinkSync(curPath);
+                            }
+                        });
+                        fs.rmdirSync(path);
+                    }
+                };
+                
+                deleteFolderRecursive(authFolder);
+                console.log('Pasta de autenticação removida com sucesso');
+            }
+        } catch (fsError) {
+            console.log('Erro ao remover pasta de autenticação:', fsError);
+            // Continuamos mesmo com erro
+        }
+        
+        // Reinicia as variáveis globais
+        clientReady = false;
+        qrData = null;
+        
+        // Cria e inicializa um novo cliente
+        client.initialize();
+        console.log('Novo cliente inicializado, aguardando QR code');
+        
+        res.json({ success: true, message: 'Sessão reiniciada com sucesso' });
+    } catch (error) {
+        console.error('Erro ao reiniciar sessão:', error);
+        res.status(500).json({ error: 'Falha ao reiniciar sessão', details: error.message });
+    }
+});
 // Inicia o servidor
 app.listen(port, () => {
     console.log(`Servidor rodando em http://localhost:${port}`);

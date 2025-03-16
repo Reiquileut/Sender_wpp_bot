@@ -14,6 +14,10 @@ import csv
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 
+def is_running_as_imported_module():
+    """Verifica se o script está sendo executado como um módulo importado."""
+    return __name__ != "__main__"
+
 # Nome do arquivo de log
 LOG_FILE = "log.txt"
 # URL base da API (ajuste conforme necessário)
@@ -90,6 +94,10 @@ class WhatsAppMessengerGUI:
         
         ttk.Button(status_container, text="Verificar Conexão", command=self.check_connection, 
                   bootstyle=INFO).pack(side=tk.RIGHT, padx=5)
+        
+        ttk.Button(status_container, text="Reiniciar Sessão", 
+                  command=self.reset_whatsapp_session, 
+                  bootstyle=WARNING).pack(side=tk.RIGHT, padx=5)
         
         # Frame para o QR Code
         self.qr_frame = ttk.LabelFrame(scrollable_frame, text="Escaneie o QR Code", 
@@ -430,6 +438,39 @@ class WhatsAppMessengerGUI:
             self.status_indicator.config(foreground="#dc3545")  # Vermelho
             self.add_log(f"Servidor offline ou inacessível: {str(e)}", "ERROR")
             self.log_error(f"Erro de conexão com o servidor: {e}")
+
+    def reset_whatsapp_session(self):
+        """Reinicia a sessão do WhatsApp para gerar um novo QR code."""
+        if messagebox.askyesno("Reiniciar Sessão", 
+                              "Isso irá encerrar sua sessão atual do WhatsApp.\n\n"
+                              "Você precisará escanear um novo QR code para reconectar.\n\n"
+                              "Deseja continuar?"):
+            try:
+                self.add_log("Solicitando reinicialização da sessão do WhatsApp...")
+                
+                # Tenta fazer uma chamada à API para reiniciar a sessão
+                response = requests.post(f"{API_BASE_URL}/reset-session", timeout=10)
+                
+                if response.status_code == 200:
+                    self.add_log("Sessão do WhatsApp reiniciada com sucesso.", "SUCCESS")
+                    self.status_text.set("Aguardando novo QR Code")
+                    self.status_indicator.config(foreground="#ffc107")  # Amarelo
+                    
+                    # Exibe o frame do QR code se ainda não estiver visível
+                    if not self.qr_frame.winfo_ismapped():
+                        self.qr_frame.pack(fill=tk.X, padx=20, pady=5, after=self.log_frame)
+                    
+                    # Aguarda um momento e solicita o novo QR code
+                    self.master.after(2000, self.get_qr_code)
+                else:
+                    error_msg = response.json().get('error', 'Erro desconhecido')
+                    self.add_log(f"Erro ao reiniciar sessão: {error_msg}", "ERROR")
+                    messagebox.showerror("Erro", f"Não foi possível reiniciar a sessão: {error_msg}")
+            except Exception as e:
+                self.add_log(f"Exceção ao reiniciar sessão: {str(e)}", "ERROR")
+                messagebox.showerror("Erro", f"Ocorreu um erro ao reiniciar a sessão: {str(e)}")
+
+
 
     def get_qr_code(self):
         """Obtém e exibe o QR code do servidor."""
@@ -974,7 +1015,7 @@ class WhatsAppMessengerGUI:
 
 if __name__ == '__main__':
     # Cria a aplicação com tema moderno
-    root = ttk.Window(themename="litera")  # Você pode escolher entre: "cosmo", "flatly", "litera", "minty", "lumen", "sandstone", "yeti", etc.
+    root = ttk.Window(themename="litera")
     root.title("WhatsApp Messenger Pro")
     
     # Definir um ícone para a aplicação (opcional)
