@@ -1,17 +1,40 @@
 import os
 import sys
+
+# Patch para corrigir o erro de importação tkinter antes de qualquer outra importação
+print("Inicializando aplicação...")
+try:
+    import tkinter_patch
+    print("Patch tkinter carregado com sucesso")
+except ImportError as e:
+    print(f"Aviso: tkinter_patch não encontrado, aplicando correção manual: {e}")
+    try:
+        # Correção manual
+        sys.modules['tkinter:filedialog'] = __import__('tkinter.filedialog', fromlist=[''])
+        sys.modules['tkinter:messagebox'] = __import__('tkinter.messagebox', fromlist=[''])
+        sys.modules['tkinter:scrolledtext'] = __import__('tkinter.scrolledtext', fromlist=[''])
+        print("Patch manual aplicado")
+    except Exception as e:
+        print(f"Erro ao aplicar patch manual: {e}")
+
+# Continua com as importações normais
 import subprocess
 import time
-import tkinter as tk
 import threading
 import json
 import shutil
 import requests
-from tkinter import messagebox
 import platform
 import webbrowser
 import signal
 
+# Importações tkinter após o patch ser aplicado
+import tkinter as tk
+from tkinter import messagebox, filedialog, scrolledtext
+
+# Resto do código normal...
+
+# ==== Funções do programa ====
 # Determina se estamos em um executável ou em modo de desenvolvimento
 def is_bundled():
     return getattr(sys, 'frozen', False)

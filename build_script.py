@@ -313,11 +313,110 @@ def build_executable(build_dir, dist_dir):
             print("Arquivo app_launcher.py não encontrado. Saindo.")
             sys.exit(1)
     
+    # NOVO: Copia o arquivo tkinter_patch.py para o diretório de build
+    tkinter_patch_src = os.path.join(current_dir, "tkinter_patch.py")
+    if os.path.exists(tkinter_patch_src):
+        print(f"Copiando tkinter_patch.py para {build_dir}")
+        shutil.copy2(tkinter_patch_src, build_dir)
+    else:
+        print("AVISO: tkinter_patch.py não encontrado, criando-o...")
+        # Cria o arquivo se não existir
+        with open(os.path.join(build_dir, "tkinter_patch.py"), "w") as f:
+            f.write("""# tkinter_patch.py
+import sys
+import importlib
+
+# Imprime informações de diagnóstico
+print("Inicializando patch para importações tkinter...")
+
+def apply_tkinter_patch():
+    \"\"\"
+    Aplica um patch para corrigir problemas de importação com tkinter:filedialog
+    \"\"\"
+    # Verifica se o erro já existe
+    problematic_modules = [
+        'tkinter:filedialog',
+        'tkinter:messagebox',
+        'tkinter:scrolledtext'
+    ]
+    
+    for bad_name in problematic_modules:
+        if bad_name in sys.modules:
+            print(f"Módulo problemático já existe: {bad_name}")
+        
+        # Determina o nome correto (tkinter.xxx)
+        correct_name = bad_name.replace(':', '.')
+        
+        try:
+            # Importa o módulo correto
+            correct_module = importlib.__import__(correct_name, fromlist=[''])
+            
+            # Adiciona no sys.modules com o nome incorreto para resolver referências
+            sys.modules[bad_name] = correct_module
+            print(f"Patch aplicado: {bad_name} → {correct_name}")
+        except ImportError as e:
+            print(f"Erro ao importar {correct_name}: {e}")
+            
+    # Verifica se os módulos tkinter básicos existem
+    basic_modules = ['tkinter', 'tkinter.filedialog', 'tkinter.messagebox', 'tkinter.scrolledtext']
+    for module_name in basic_modules:
+        try:
+            module = importlib.import_module(module_name)
+            print(f"Módulo {module_name} carregado com sucesso")
+        except ImportError as e:
+            print(f"Erro ao importar {module_name}: {e}")
+
+# Aplica o patch imediatamente
+apply_tkinter_patch()
+
+# Define importações de fallback para uso no código
+try:
+    import tkinter as tk
+    from tkinter import filedialog, messagebox, scrolledtext
+    print("Importações tkinter padrão bem-sucedidas")
+except ImportError as e:
+    print(f"Erro nas importações padrão: {e}")
+    # Tenta importar do sys.modules patched
+    if 'tkinter' in sys.modules:
+        tk = sys.modules['tkinter']
+        if 'tkinter:filedialog' in sys.modules:
+            filedialog = sys.modules['tkinter:filedialog']
+        if 'tkinter:messagebox' in sys.modules:
+            messagebox = sys.modules['tkinter:messagebox']
+        if 'tkinter:scrolledtext' in sys.modules:
+            scrolledtext = sys.modules['tkinter:scrolledtext']
+        print("Importações alternativas aplicadas")
+
+# Informa que o patch foi aplicado
+print("Patch tkinter finalizado")
+""")
+
+    # NOVO: Cria o hook personalizado se não existir
+    hook_custom_path = os.path.join(build_dir, "hook-custom.py")
+    if not os.path.exists(hook_custom_path):
+        print("Criando hook personalizado...")
+        with open(hook_custom_path, "w") as f:
+            f.write("""# hook-custom.py
+from PyInstaller.utils.hooks import collect_submodules
+
+# Coleta todos os submódulos do tkinter
+hiddenimports = collect_submodules('tkinter')
+
+# Adiciona manualmente os módulos problemáticos
+hiddenimports.extend([
+    'tkinter.filedialog',
+    'tkinter.messagebox',
+    'tkinter.scrolledtext'
+])
+""")
+
     # Pastas a serem incluídas no pacote
     additional_data = [
         (os.path.join(build_dir, "server"), "server"),
         (os.path.join(build_dir, "client"), "client"),
-        (os.path.join(build_dir, "bin"), "bin")
+        (os.path.join(build_dir, "bin"), "bin"),
+        # NOVO: Inclui o tkinter_patch.py como dado adicional
+        (os.path.join(build_dir, "tkinter_patch.py"), ".")
     ]
     
     # Verifica se todas as pastas existem
@@ -332,7 +431,17 @@ def build_executable(build_dir, dist_dir):
         "--name", PROJECT_NAME,
         "--onedir",  # Cria um diretório com o executável e dependências
         "--windowed",  # Não mostra a janela de console
-        "--log-level", "DEBUG"  # Adiciona log detalhado para debug
+        "--log-level", "DEBUG",  # Adiciona log detalhado para debug
+        # NOVO: Adiciona o hook personalizado
+        "--additional-hooks-dir=.",
+        # NOVO: Adiciona importações ocultas para tkinter e submódulos
+        "--hidden-import=tkinter",
+        "--hidden-import=tkinter.filedialog",
+        "--hidden-import=tkinter.messagebox",
+        "--hidden-import=tkinter.scrolledtext",
+        "--hidden-import=tkinter.ttk",
+        # NOVO: Forçar o hook de tkinter para ser processado
+        "--hidden-import=_tkinter",
     ]
     
     # Adiciona o ícone se existir
@@ -382,6 +491,8 @@ def build_executable(build_dir, dist_dir):
     except Exception as e:
         print(f"ERRO ao executar PyInstaller: {e}")
         sys.exit(1)
+    
+    # Resto da função permanece igual...
     
     # Move o resultado para o diretório de distribuição
     pyinstaller_dist = os.path.join(build_dir, "dist", PROJECT_NAME)

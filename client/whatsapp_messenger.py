@@ -25,8 +25,28 @@ def is_running_as_imported_module():
 
 # Nome do arquivo de log
 LOG_FILE = "log.txt"
+
+# Função para obter a porta do servidor (nova função)
+def get_server_port():
+    """Obtém a porta do servidor a partir do arquivo server_port.txt ou usa a porta padrão."""
+    port_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "server", "server_port.txt")
+    
+    try:
+        if os.path.exists(port_file):
+            with open(port_file, 'r') as f:
+                return int(f.read().strip())
+    except Exception as e:
+        print(f"Erro ao ler porta do servidor: {e}")
+    
+    # Retorna a porta padrão se não conseguir ler o arquivo
+    return 3000
+
+# Portas alternativas para tentar se a principal falhar
+ALTERNATIVE_PORTS = [3000, 3001, 3002, 3003, 3004, 3005]
+
 # URL base da API (ajuste conforme necessário)
-API_BASE_URL = "http://localhost:3000/api"
+server_port = get_server_port()
+API_BASE_URL = f"http://localhost:{server_port}/api"
 
 class WhatsAppMessengerGUI:
     def __init__(self, master):
@@ -96,6 +116,15 @@ class WhatsAppMessengerGUI:
         self.status_label = ttk.Label(status_container, textvariable=self.status_text, 
                                     font=("Helvetica", 11))
         self.status_label.pack(side=tk.LEFT, padx=5, pady=5)
+        
+        # Adicionando indicador de porta
+        self.port_label = ttk.Label(status_container, text=f"Porta: {get_server_port()}", 
+                                  font=("Helvetica", 9), foreground="#888888")
+        self.port_label.pack(side=tk.LEFT, padx=20)
+        
+        # Botão para escolher porta manualmente
+        ttk.Button(status_container, text="Alterar Porta", command=self.change_server_port, 
+                  bootstyle=SECONDARY, width=12).pack(side=tk.RIGHT, padx=5)
         
         ttk.Button(status_container, text="Verificar Conexão", command=self.check_connection, 
                   bootstyle=INFO).pack(side=tk.RIGHT, padx=5)
@@ -340,9 +369,11 @@ class WhatsAppMessengerGUI:
         self.failed_numbers = []
         self.error_messages = {}
         self.running = False
+        self.current_port = get_server_port()
         
         # Adiciona o primeiro log
         self.add_log("Sistema iniciado. Aguardando ações do usuário.")
+        self.add_log(f"Usando porta do servidor: {self.current_port}")
         
         # Verificação automática da conexão
         self.check_connection_periodic()
@@ -406,43 +437,117 @@ class WhatsAppMessengerGUI:
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             f.write(f"{timestamp} - {level}: {message}\n")
 
+    # Novo método para mudar a porta do servidor
+    def change_server_port(self):
+        """Permite ao usuário selecionar manualmente a porta do servidor."""
+        # Cria uma janela de diálogo para escolher a porta
+        port_dialog = ttk.Toplevel(self.master)
+        port_dialog.title("Selecionar Porta do Servidor")
+        port_dialog.geometry("350x200")
+        port_dialog.transient(self.master)
+        port_dialog.grab_set()
+        
+        # Função para escolher uma porta
+        def select_port(port):
+            global API_BASE_URL
+            self.current_port = port
+            API_BASE_URL = f"http://localhost:{port}/api"
+            self.port_label.config(text=f"Porta: {port}")
+            self.add_log(f"Porta alterada para: {port}")
+            port_dialog.destroy()
+            # Testa a conexão com a nova porta
+            self.check_connection()
+        
+        ttk.Label(port_dialog, text="Selecione a porta do servidor:", 
+                 font=("Helvetica", 11, "bold")).pack(pady=10)
+        
+        # Cria botões para cada porta alternativa
+        ports_frame = ttk.Frame(port_dialog)
+        ports_frame.pack(pady=10)
+        
+        for i, port in enumerate(ALTERNATIVE_PORTS):
+            row = i // 3
+            col = i % 3
+            ttk.Button(ports_frame, text=str(port), width=8,
+                      bootstyle=("success" if port == self.current_port else "outline"),
+                      command=lambda p=port: select_port(p)).grid(row=row, column=col, padx=5, pady=5)
+        
+        ttk.Button(port_dialog, text="Cancelar", 
+                  command=port_dialog.destroy, 
+                  bootstyle=SECONDARY).pack(pady=10)
+
+    # Modificação no método check_connection_periodic para usar o novo sistema
     def check_connection_periodic(self):
         """Verifica periodicamente a conexão com o servidor."""
-        self.check_connection()
+        try:
+            self.check_connection()
+        except Exception as e:
+            self.add_log(f"Erro ao verificar conexão periódica: {str(e)}", "ERROR")
+        
         # Agenda a próxima verificação em 30 segundos
         self.master.after(30000, self.check_connection_periodic)
 
+    # Modificação no método check_connection para tentar portas alternativas
     def check_connection(self):
         """Verifica a conexão com o servidor API."""
+        global API_BASE_URL
         self.add_log("Verificando conexão com o servidor...")
         
+        # Tenta com a porta atual primeiro
+        if self.try_connection(self.current_port):
+            return True
+        
+        # Se falhar, tenta outras portas
+        self.add_log("Conexão falhou na porta atual. Tentando portas alternativas...", "WARNING")
+        
+        for port in ALTERNATIVE_PORTS:
+            if port != self.current_port:
+                if self.try_connection(port):
+                    # Atualiza a porta atual
+                    self.current_port = port
+                    API_BASE_URL = f"http://localhost:{port}/api"
+                    self.port_label.config(text=f"Porta: {port}")
+                    return True
+        
+        # Se todas as tentativas falharem
+        self.status_text.set(f"Erro: Servidor não encontrado")
+        self.status_indicator.config(foreground="#dc3545")  # Vermelho
+        self.add_log("Servidor não encontrado em nenhuma porta. Verifique se o servidor está rodando.", "ERROR")
+        return False
+    
+    # Novo método para tentar conexão em uma porta específica
+    def try_connection(self, port):
+        """Tenta conectar ao servidor em uma porta específica."""
         try:
-            response = requests.get(f"{API_BASE_URL}/status", timeout=5)
+            temp_url = f"http://localhost:{port}/api/status"
+            self.add_log(f"Tentando conectar na porta {port}...")
+            
+            response = requests.get(temp_url, timeout=2)
+            
             if response.status_code == 200:
                 data = response.json()
+                
                 if data.get('ready', False):
                     self.status_text.set("Conectado e Pronto")
                     self.status_indicator.config(foreground="#28a745")  # Verde
-                    self.add_log("Servidor conectado e autenticado com WhatsApp.", "SUCCESS")
+                    self.add_log(f"Servidor conectado na porta {port} e autenticado com WhatsApp.", "SUCCESS")
                     # Esconde o QR code se já estiver conectado
                     self.qr_frame.pack_forget()
+                    return True
                 else:
                     self.status_text.set("Aguardando Autenticação")
                     self.status_indicator.config(foreground="#ffc107")  # Amarelo
-                    self.add_log("Servidor está online, mas aguardando autenticação no WhatsApp.", "WARNING")
+                    self.add_log(f"Servidor está online na porta {port}, mas aguardando autenticação no WhatsApp.", "WARNING")
                     # Mostra o frame QR Code apenas se não estiver pronto
                     if not self.qr_frame.winfo_ismapped():
                         self.qr_frame.pack(fill=tk.X, padx=20, pady=5, after=self.log_frame)
                     self.get_qr_code()  # Tenta obter o QR code automaticamente
-            else:
-                self.status_text.set(f"Erro: {response.status_code}")
-                self.status_indicator.config(foreground="#dc3545")  # Vermelho
-                self.add_log(f"Erro na comunicação com o servidor: Código {response.status_code}", "ERROR")
-        except requests.RequestException as e:
-            self.status_text.set(f"Erro de Conexão: Servidor Offline")
-            self.status_indicator.config(foreground="#dc3545")  # Vermelho
-            self.add_log(f"Servidor offline ou inacessível: {str(e)}", "ERROR")
-            self.log_error(f"Erro de conexão com o servidor: {e}")
+                    return True
+            
+            return False
+        
+        except requests.RequestException:
+            return False
 
     def reset_whatsapp_session(self):
         """Reinicia a sessão do WhatsApp para gerar um novo QR code."""
@@ -474,8 +579,6 @@ class WhatsAppMessengerGUI:
             except Exception as e:
                 self.add_log(f"Exceção ao reiniciar sessão: {str(e)}", "ERROR")
                 messagebox.showerror("Erro", f"Ocorreu um erro ao reiniciar a sessão: {str(e)}")
-
-
 
     def get_qr_code(self):
         """Obtém e exibe o QR code do servidor."""

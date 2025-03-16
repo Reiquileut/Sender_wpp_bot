@@ -53,7 +53,10 @@ if (!express || !Client || !LocalAuth || !MessageMedia || !qrcode || !fs || !mul
 console.log('Todas as dependências carregadas com sucesso. Inicializando servidor...');
 
 const app = express();
-const port = 3000;
+// MODIFICAÇÃO: Permitir porta alternativa via variável de ambiente ou usar portas alternativas
+const DEFAULT_PORT = 3000;
+const ALTERNATIVE_PORTS = [3001, 3002, 3003, 3004, 3005];
+let port = process.env.PORT || DEFAULT_PORT;
 
 // Configuração do diretório para armazenar arquivos temporários
 const upload = multer({ dest: 'uploads/' });
@@ -445,22 +448,42 @@ app.post('/api/reset-session', async (req, res) => {
     }
 });
 
-// Inicia o servidor
-const server = app.listen(port, () => {
-    console.log(`Servidor rodando em http://localhost:${port}`);
-});
-
-// Adiciona tratamento de erros para o servidor HTTP
-server.on('error', (error) => {
-    console.error('Erro no servidor HTTP:', error);
-});
-
-// Monitoramento de memória para diagnóstico
-setInterval(() => {
-    const memoryUsage = process.memoryUsage();
-    console.log('Uso de memória:', {
-        rss: `${Math.round(memoryUsage.rss / 1024 / 1024)} MB`,
-        heapTotal: `${Math.round(memoryUsage.heapTotal / 1024 / 1024)} MB`,
-        heapUsed: `${Math.round(memoryUsage.heapUsed / 1024 / 1024)} MB`
+// Função que tenta iniciar o servidor em uma porta, com fallback para portas alternativas
+function startServer(portToUse) {
+    const server = app.listen(portToUse, () => {
+        console.log(`Servidor rodando em http://localhost:${portToUse}`);
+        // Salva a porta atual para que o cliente saiba onde conectar
+        fs.writeFileSync('server_port.txt', portToUse.toString());
     });
-}, 60000); // Registra uso de memória a cada minuto
+
+    server.on('error', (error) => {
+        if (error.code === 'EADDRINUSE') {
+            console.error(`A porta ${portToUse} já está em uso. Tentando outra porta...`);
+            
+            // Se for a porta padrão, tenta usar portas alternativas
+            if (ALTERNATIVE_PORTS.length > 0) {
+                const nextPort = ALTERNATIVE_PORTS.shift();
+                console.log(`Tentando porta alternativa: ${nextPort}`);
+                startServer(nextPort);
+            } else {
+                console.error('Todas as portas alternativas estão em uso. Não foi possível iniciar o servidor.');
+                process.exit(1);
+            }
+        } else {
+            console.error('Erro no servidor HTTP:', error);
+        }
+    });
+
+    // Monitoramento de memória para diagnóstico
+    setInterval(() => {
+        const memoryUsage = process.memoryUsage();
+        console.log('Uso de memória:', {
+            rss: `${Math.round(memoryUsage.rss / 1024 / 1024)} MB`,
+            heapTotal: `${Math.round(memoryUsage.heapTotal / 1024 / 1024)} MB`,
+            heapUsed: `${Math.round(memoryUsage.heapUsed / 1024 / 1024)} MB`
+        });
+    }, 60000); // Registra uso de memória a cada minuto
+}
+
+// Inicia o servidor com a primeira porta disponível
+startServer(port);
