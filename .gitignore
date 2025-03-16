@@ -1,0 +1,6 @@
+node_modules/
+whatsapp-session/
+User_data/
+.idea/
+__pycache__/
+*.pyc
