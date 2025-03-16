@@ -14,6 +14,7 @@ import requests
 import json
 import random
 import csv
+import qrcode_handler  # Nosso novo módulo para lidar com QR codes
 
 # Importar ttkbootstrap para estilo moderno (necessário instalar: pip install ttkbootstrap)
 import ttkbootstrap as ttk
@@ -141,9 +142,21 @@ class WhatsAppMessengerGUI:
         qr_container = ttk.Frame(self.qr_frame)
         qr_container.pack(fill=tk.X)
         
+        # Botões para QR code
+        qr_buttons = ttk.Frame(qr_container)
+        qr_buttons.pack(fill=tk.X)
+        
         # Botão para obter QR code
-        ttk.Button(qr_container, text="Obter QR Code", command=self.get_qr_code, 
-                  bootstyle="warning").pack(pady=5)
+        ttk.Button(qr_buttons, text="Obter QR Code", command=self.get_qr_code, 
+                  bootstyle="warning").pack(side=tk.LEFT, padx=5, pady=5)
+        
+        # Botão para solicitar novo QR code
+        ttk.Button(qr_buttons, text="Forçar Novo QR Code", command=self.request_new_qrcode, 
+                  bootstyle="secondary").pack(side=tk.LEFT, padx=5, pady=5)
+        
+        # Área para exibir o QR code como imagem
+        self.qr_image_label = ttk.Label(self.qr_frame)
+        self.qr_image_label.pack(pady=10)
         
         # Área de texto para QR code
         self.qr_text = scrolledtext.ScrolledText(self.qr_frame, height=10, width=50, 
@@ -541,7 +554,7 @@ class WhatsAppMessengerGUI:
                     # Mostra o frame QR Code apenas se não estiver pronto
                     if not self.qr_frame.winfo_ismapped():
                         self.qr_frame.pack(fill=tk.X, padx=20, pady=5, after=self.log_frame)
-                    self.get_qr_code()  # Tenta obter o QR code automaticamente
+                    self.master.after(500, self.get_qr_code)  # Pequeno atraso para permitir renderização da UI
                     return True
             
             return False
@@ -580,33 +593,91 @@ class WhatsAppMessengerGUI:
                 self.add_log(f"Exceção ao reiniciar sessão: {str(e)}", "ERROR")
                 messagebox.showerror("Erro", f"Ocorreu um erro ao reiniciar a sessão: {str(e)}")
 
+    def request_new_qrcode(self):
+        """Solicita a geração de um novo QR code ao servidor."""
+        self.add_log("Solicitando geração de novo QR code...")
+        
+        try:
+            response = requests.post(f"{API_BASE_URL}/request-new-qrcode", timeout=10)
+            
+            if response.status_code == 200:
+                self.add_log("Solicitação de novo QR code enviada com sucesso.", "SUCCESS")
+                self.add_log("Aguardando 5 segundos para geração do QR code...")
+                
+                # Atualiza a interface
+                self.qr_text.delete('1.0', tk.END)
+                self.qr_text.insert(tk.END, "Gerando novo QR code, aguarde...")
+                self.qr_image_label.config(image='')  # Limpa a imagem
+                
+                # Aguarda 5 segundos e tenta obter o QR code
+                self.master.after(5000, self.get_qr_code)
+            else:
+                error_msg = response.json().get('error', 'Erro desconhecido')
+                self.add_log(f"Erro ao solicitar novo QR code: {error_msg}", "ERROR")
+                messagebox.showerror("Erro", f"Não foi possível solicitar novo QR code: {error_msg}")
+        except Exception as e:
+            self.add_log(f"Exceção ao solicitar novo QR code: {str(e)}", "ERROR")
+            messagebox.showerror("Erro", f"Ocorreu um erro ao solicitar novo QR code: {str(e)}")
+
     def get_qr_code(self):
-        """Obtém e exibe o QR code do servidor."""
+        """Obtém e exibe o QR code do servidor como uma imagem na interface."""
         self.add_log("Solicitando QR Code para autenticação...")
         
         try:
-            response = requests.get(f"{API_BASE_URL}/qrcode", timeout=5)
+            response = requests.get(f"{API_BASE_URL}/qrcode", timeout=10)
+            
             if response.status_code == 200:
                 data = response.json()
                 qr_code_text = data.get('qrCodeText')
                 
                 if qr_code_text:
-                    # Limpa o texto anterior
+                    # 1. Atualiza o texto do QR code na área de texto
                     self.qr_text.delete('1.0', tk.END)
-                    # Insere o novo QR code
-                    self.qr_text.insert(tk.END, qr_code_text)
-                    self.add_log("QR Code recebido. Escaneie-o com seu WhatsApp.", "SUCCESS")
+                    self.qr_text.insert(tk.END, "QR Code disponível abaixo como imagem")
+                    
+                    # 2. Gera e exibe a imagem do QR code
+                    qrcode_handler.update_qr_display(qr_code_text, self.qr_image_label)
+                    
+                    self.add_log("QR Code recebido e exibido. Escaneie-o com seu WhatsApp.", "SUCCESS")
                 else:
                     self.qr_text.delete('1.0', tk.END)
                     self.qr_text.insert(tk.END, "QR Code não disponível")
+                    self.qr_image_label.config(image='')  # Limpa a imagem
                     self.add_log("QR Code não disponível no momento.", "WARNING")
+            elif response.status_code == 202:
+                # O servidor está reiniciando a sessão
+                message = response.json().get('message', 'Reiniciando sessão...')
+                self.qr_text.delete('1.0', tk.END)
+                self.qr_text.insert(tk.END, message)
+                self.qr_image_label.config(image='')  # Limpa a imagem
+                self.add_log(message, "WARNING")
+                
+                # Tenta novamente após 5 segundos
+                self.master.after(5000, self.get_qr_code)
+            elif response.status_code == 404:
+                self.qr_text.delete('1.0', tk.END)
+                self.qr_text.insert(tk.END, "Erro 404: QR Code não encontrado. Tente solicitar um novo QR code.")
+                self.qr_image_label.config(image='')  # Limpa a imagem
+                self.add_log("Erro 404: QR Code não encontrado.", "ERROR")
+                
+                # Adiciona botão para solicitar novo QR code
+                if not hasattr(self, 'request_qr_button'):
+                    self.request_qr_button = ttk.Button(
+                        self.qr_frame, 
+                        text="Solicitar Novo QR Code", 
+                        command=self.request_new_qrcode, 
+                        bootstyle="danger"
+                    )
+                    self.request_qr_button.pack(pady=5)
             else:
                 self.qr_text.delete('1.0', tk.END)
-                self.qr_text.insert(tk.END, f"Erro ao obter QR Code: {response.status_code}")
+                self.qr_text.insert(tk.END, f"Erro ao obter QR Code: Código {response.status_code}")
+                self.qr_image_label.config(image='')  # Limpa a imagem
                 self.add_log(f"Erro ao obter QR Code: Código {response.status_code}", "ERROR")
         except Exception as e:
             self.qr_text.delete('1.0', tk.END)
             self.qr_text.insert(tk.END, f"Erro: {str(e)}")
+            self.qr_image_label.config(image='')  # Limpa a imagem
             self.add_log(f"Exceção ao obter QR code: {str(e)}", "ERROR")
             self.log_error(f"Erro ao obter QR code: {e}")
 

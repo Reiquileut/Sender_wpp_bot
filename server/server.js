@@ -150,18 +150,74 @@ app.get('/api/status', (req, res) => {
 });
 
 // Rota para obter o QR code
+// Encontre a rota do QR code no arquivo server.js e substitua-a pela versão abaixo:
+
+// Rota para obter o QR code
 app.get('/api/qrcode', async (req, res) => {
     console.log('Recebida solicitação de QR Code. Disponível:', qrData ? 'Sim' : 'Não');
+    
     if (!qrData) {
-        return res.status(404).json({ error: 'QR Code não disponível' });
+        // Se o QR code não estiver disponível, tente reiniciar a sessão
+        console.log('QR Code não disponível. Tentando reiniciar a sessão...');
+        try {
+            // Libera a sessão atual
+            if (client.pupBrowser) {
+                await client.destroy();
+                console.log('Cliente destruído para reinicialização');
+            }
+            
+            // Força a reinicialização após breve pausa
+            setTimeout(() => {
+                qrData = null;
+                clientReady = false;
+                client.initialize();
+                console.log('Cliente reinicializado, aguardando novo QR code');
+            }, 1000);
+            
+            // Responde que está reiniciando
+            return res.status(202).json({ 
+                message: 'QR Code não disponível. Reiniciando sessão. Tente novamente em 5 segundos.' 
+            });
+        } catch (err) {
+            console.error('Erro ao tentar reiniciar sessão:', err);
+            return res.status(500).json({ error: 'Erro ao tentar gerar novo QR Code' });
+        }
     }
     
     try {
         // Retorna o texto do QR code
         res.json({ qrCodeText: qrData });
     } catch (error) {
-        console.error('Erro ao gerar QR Code:', error);
+        console.error('Erro ao disponibilizar QR Code:', error);
         res.status(500).json({ error: 'Erro ao gerar QR Code' });
+    }
+});
+
+// Adicione esta nova rota no servidor para forçar a regeneração do QR code:
+app.post('/api/request-new-qrcode', async (req, res) => {
+    console.log('Solicitação para gerar novo QR code recebida');
+    
+    try {
+        // Libera a sessão atual sem apagar os arquivos
+        if (client.pupBrowser) {
+            await client.destroy();
+            console.log('Cliente destruído para regeneração de QR');
+        }
+        
+        // Limpa dados
+        qrData = null;
+        clientReady = false;
+        
+        // Reinicia o cliente
+        setTimeout(() => {
+            client.initialize();
+            console.log('Cliente reinicializado, aguardando novo QR code');
+        }, 1000);
+        
+        res.json({ success: true, message: 'Solicitação para novo QR Code enviada. Aguarde 5 segundos e tente obter o QR Code novamente.' });
+    } catch (error) {
+        console.error('Erro ao solicitar novo QR code:', error);
+        res.status(500).json({ error: 'Erro ao solicitar novo QR code' });
     }
 });
 
