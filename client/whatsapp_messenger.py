@@ -1,5 +1,10 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox, scrolledtext
+# Correção da importação do tkinter para compatibilidade com PyInstaller
+import tkinter.filedialog as filedialog
+import tkinter.messagebox as messagebox
+import tkinter.scrolledtext as scrolledtext
+# Em vez de: from tkinter import filedialog, messagebox, scrolledtext
+
 import pandas as pd
 import time
 import datetime
