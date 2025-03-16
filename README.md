@@ -1,1 +1,1 @@
-# bot_sender_wpp
+# Sender_wpp_bot
