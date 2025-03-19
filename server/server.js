@@ -1,4 +1,4 @@
-// server.js - Servidor WhatsApp com sistema de tokens
+// server.js - Servidor WhatsApp com sistema de tokens.
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
